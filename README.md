@@ -58,6 +58,27 @@ Streamlit :
 
 - cocher **"Mode avancé : conserver les artefacts techniques"**.
 
+
+## Mode "documentation site"
+
+CLI :
+
+```bash
+url2md --url https://docs.example.com/docs --documentation-mode auto
+```
+
+Options utiles :
+- `--documentation-mode off|auto|force`
+- `--doc-max-pages`
+- `--doc-max-depth`
+
+Le mode documentation :
+- détecte des signaux documentaires combinés (URL + structure HTML),
+- limite le crawl au périmètre documentaire interne,
+- exclut les pages non documentaires courantes (blog/pricing/legal/login),
+- classe les pages en sections (API, Features, FAQ, etc.),
+- génère un `index.md` et des sections avec pages + agrégats.
+
 ## Continuer à utiliser la CLI
 
 Exemple simple :
@@ -104,4 +125,5 @@ python -m pytest -q
 - Sitemaps supportés : `urlset` et `sitemapindex` (avec profondeur max simple).
 - Sur `sitemapindex`, si un sous-sitemap échoue, le traitement continue avec les autres.
 - L'extraction filtre certains éléments bruyants courants (nav/header/footer/cookies), avec heuristique simple.
+- Les fichiers agrégés annoncent explicitement leur périmètre (type, source racine, date, nombre de pages, URLs incluses) et séparent clairement chaque page.
 - PDF générés volontairement minimalistes (texte simple) pour rester déterministe.

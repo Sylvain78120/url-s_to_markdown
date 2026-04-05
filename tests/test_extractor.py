@@ -21,11 +21,13 @@ def test_extract_page_content_filters_common_noise():
       <body>
         <header>Menu principal</header>
         <nav>Navigation</nav>
+        <div class="sidebar">Table of contents</div>
         <main>
           <p>Contenu utile A</p>
           <p>Contenu utile B</p>
+          <p>Prerequisites: Python 3.10</p>
         </main>
-        <footer>Privacy policy</footer>
+        <footer>Was this page helpful?</footer>
       </body>
     </html>
     """
@@ -34,4 +36,6 @@ def test_extract_page_content_filters_common_noise():
     assert "Contenu utile A" in result.text
     assert "Contenu utile B" in result.text
     assert "Menu principal" not in result.text
-    assert "Privacy policy" not in result.text
+    assert "Table of contents" not in result.text
+    assert "Was this page helpful" not in result.text
+    assert "Prerequisites: Python 3.10" in result.text

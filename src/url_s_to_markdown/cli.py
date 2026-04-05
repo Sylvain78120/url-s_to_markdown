@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .documentation_mode import discover_documentation_urls
 from .http_client import UrllibHTTPClient
 from .inputs import collect_input_candidates, parse_url_stats_from_candidates
 from .pipeline import run_pipeline
@@ -27,6 +28,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Inclure aussi les URLs hors domaine du sitemap (défaut: non)",
     )
+    parser.add_argument(
+        "--documentation-mode",
+        choices=["off", "auto", "force"],
+        default="off",
+        help="Détection de documentation: off, auto, force.",
+    )
+    parser.add_argument("--doc-max-pages", type=int, default=40, help="Nombre max de pages crawlées en mode documentation.")
+    parser.add_argument("--doc-max-depth", type=int, default=2, help="Profondeur max de crawl en mode documentation.")
     parser.add_argument(
         "--output-root",
         default="outputs",
@@ -61,6 +70,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         input_candidates.extend(sitemap_result.urls)
 
+    documentation_context = None
+    if args.documentation_mode != "off":
+        doc_urls: list[str] = []
+        section_by_url: dict[str, str] = {}
+        root_url = ""
+        for candidate in list(input_candidates):
+            doc_result = discover_documentation_urls(
+                candidate,
+                client,
+                mode=args.documentation_mode,
+                max_pages=args.doc_max_pages,
+                max_depth=args.doc_max_depth,
+            )
+            if doc_result.detected:
+                root_url = doc_result.root_url
+                doc_urls.extend(doc_result.urls)
+                section_by_url.update(doc_result.section_by_url)
+
+        if doc_urls:
+            input_candidates.extend(doc_urls)
+            documentation_context = {"root_url": root_url, "section_by_url": section_by_url}
+
     stats = parse_url_stats_from_candidates(input_candidates)
 
     print("=== Compteur URLs (avant traitement) ===")
@@ -87,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         output_root=Path(args.output_root),
         max_urls=args.max_urls,
         include_artifacts=args.include_artifacts,
+        documentation_context=documentation_context,
     )
 
     print("\n=== Résumé final ===")

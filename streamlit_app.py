@@ -7,6 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from url_s_to_markdown.documentation_mode import discover_documentation_urls
 from url_s_to_markdown.http_client import UrllibHTTPClient
 from url_s_to_markdown.inputs import collect_input_candidates, parse_url_stats_from_candidates, parse_urls_from_text_block
 from url_s_to_markdown.pipeline import run_pipeline
@@ -68,6 +69,9 @@ def main() -> None:
     max_urls = st.number_input("max_urls", min_value=1, value=20, step=1)
     output_root = st.text_input("Dossier de sortie", value="outputs")
     include_artifacts = st.checkbox("Mode avancé : conserver les artefacts techniques", value=False)
+    documentation_mode = st.selectbox("Mode documentation", options=["off", "auto", "force"], index=1)
+    doc_max_pages = st.number_input("doc_max_pages", min_value=5, value=40, step=5)
+    doc_max_depth = st.number_input("doc_max_depth", min_value=1, value=2, step=1)
 
     client = UrllibHTTPClient()
     input_candidates = collect_input_candidates(
@@ -84,6 +88,27 @@ def main() -> None:
             same_domain_only=not sitemap_include_external,
         )
         input_candidates.extend(sitemap_result.urls)
+
+    documentation_context = None
+    if documentation_mode != "off":
+        doc_urls: list[str] = []
+        section_by_url: dict[str, str] = {}
+        root_url = ""
+        for candidate in list(input_candidates):
+            doc_result = discover_documentation_urls(
+                candidate,
+                client,
+                mode=documentation_mode,
+                max_pages=int(doc_max_pages),
+                max_depth=int(doc_max_depth),
+            )
+            if doc_result.detected:
+                root_url = doc_result.root_url
+                doc_urls.extend(doc_result.urls)
+                section_by_url.update(doc_result.section_by_url)
+        if doc_urls:
+            input_candidates.extend(doc_urls)
+            documentation_context = {"root_url": root_url, "section_by_url": section_by_url}
 
     stats = parse_url_stats_from_candidates(input_candidates)
     _render_stats("Compteurs avant traitement", stats)
@@ -112,6 +137,7 @@ def main() -> None:
             output_root=Path(output_root),
             max_urls=int(max_urls),
             include_artifacts=include_artifacts,
+            documentation_context=documentation_context,
         )
     except Exception as exc:  # noqa: BLE001
         st.error(f"Erreur pendant le traitement: {exc}")

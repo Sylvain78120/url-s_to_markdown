@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 from .extractor import PageContent
@@ -21,11 +22,46 @@ def page_to_markdown(page: PageContent) -> str:
     return f"# {page.title}\n\nSource: {page.url}\n\n{page.text}\n"
 
 
-def build_merged_markdown(pages: list[PageContent]) -> str:
-    sections: list[str] = []
+def build_merged_markdown(
+    pages: list[PageContent],
+    *,
+    section_label: str = "Section",
+    source_root: str = "N/A",
+    aggregation_rule: str = "Pages regroupées par section détectée.",
+    generated_date: str | None = None,
+) -> str:
+    date_value = generated_date or datetime.utcnow().strftime("%Y-%m-%d")
+
+    header_lines = [
+        f"# Corpus agrégé — {section_label}",
+        "",
+        "Type: agrégé",
+        f"Source racine: {source_root}",
+        f"Date de génération: {date_value}",
+        f"Nombre de pages incluses: {len(pages)}",
+        f"Règle d'agrégation: {aggregation_rule}",
+        "",
+        "## URLs incluses",
+    ]
+
     for page in pages:
-        sections.append(f"# {page.title}\n\nSource: {page.url}\n\n{page.text}\n")
-    return "\n---\n\n".join(sections).strip() + "\n"
+        header_lines.append(f"- {page.url}")
+
+    body_sections: list[str] = []
+    for index, page in enumerate(pages, start=1):
+        body_sections.append(
+            "\n".join(
+                [
+                    "---",
+                    f"## Page {index} — {page.title}",
+                    f"Source: {page.url}",
+                    "",
+                    page.text,
+                ]
+            )
+        )
+
+    return "\n".join(header_lines).strip() + "\n\n" + "\n\n".join(body_sections).strip() + "\n"
 
 
 def write_group_pages_markdown(pages: list[PageContent], pages_dir: Path, date_str: str) -> list[Path]:

@@ -19,6 +19,7 @@ class _TextExtractor(HTMLParser):
         self._in_title = False
         self._skip_depth = 0
         self._noise_depth = 0
+        self._noise_tag_stack: list[str] = []
         self.title = ""
         self._text_chunks: list[str] = []
 
@@ -27,16 +28,26 @@ class _TextExtractor(HTMLParser):
             self._in_title = True
         if tag in {"script", "style", "noscript"}:
             self._skip_depth += 1
-        if tag in {"nav", "footer", "header", "aside", "form", "button"}:
+
+        attr_text = " ".join(str(value).lower() for _, value in attrs if value)
+        noisy_attr_hints = ["nav", "menu", "sidebar", "breadcrumb", "footer", "cookie", "toc", "assist"]
+        is_noisy = tag in {"nav", "footer", "header", "aside", "form", "button"} or any(
+            hint in attr_text for hint in noisy_attr_hints
+        )
+        if is_noisy:
             self._noise_depth += 1
+            self._noise_tag_stack.append(tag)
 
     def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
         if tag == "title":
             self._in_title = False
         if tag in {"script", "style", "noscript"} and self._skip_depth > 0:
             self._skip_depth -= 1
-        if tag in {"nav", "footer", "header", "aside", "form", "button"} and self._noise_depth > 0:
-            self._noise_depth -= 1
+
+        if self._noise_tag_stack and tag == self._noise_tag_stack[-1]:
+            self._noise_tag_stack.pop()
+            if self._noise_depth > 0:
+                self._noise_depth -= 1
 
     def handle_data(self, data: str) -> None:  # type: ignore[override]
         cleaned = " ".join(data.split())
@@ -56,6 +67,10 @@ class _TextExtractor(HTMLParser):
             "subscribe",
             "menu",
             "navigation",
+            "skip to main content",
+            "was this page helpful",
+            "table of contents",
+            "back to top",
         ]
         if any(fragment in lower for fragment in noisy_fragments):
             return

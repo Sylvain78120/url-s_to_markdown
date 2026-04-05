@@ -96,3 +96,31 @@ def test_run_pipeline_batches_when_limit_reached(tmp_path: Path):
     assert result.organization_plan_json is not None
     plan = json.loads(result.organization_plan_json.read_text(encoding="utf-8"))
     assert len(plan["batches"]) == 2
+
+
+def test_run_pipeline_documentation_mode_creates_index_and_sections(tmp_path: Path):
+    urls = [
+        "https://docs.example.com/docs/getting-started",
+        "https://docs.example.com/docs/api/auth",
+    ]
+    result = run_pipeline(
+        stats=_stats(urls),
+        client=FakeHTTPClient(),
+        output_root=tmp_path,
+        max_urls=20,
+        documentation_context={
+            "root_url": "https://docs.example.com/docs",
+            "section_by_url": {
+                "https://docs.example.com/docs/getting-started": "Getting_started",
+                "https://docs.example.com/docs/api/auth": "API",
+            },
+        },
+    )
+
+    index_path = result.output_dir / "index.md"
+    assert index_path.exists()
+    assert "Index du corpus documentaire" in index_path.read_text(encoding="utf-8")
+
+    section_dirs = [p for p in (result.output_dir / "sections").glob("*") if p.is_dir()]
+    assert section_dirs
+    assert any((d / "pages").exists() for d in section_dirs)

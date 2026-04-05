@@ -12,6 +12,7 @@ from .inputs import URLStats, chunk_urls
 from .organization import URLGroup, build_groups, dated_title
 from .writers import (
     build_merged_markdown,
+    page_to_markdown,
     write_group_pages_markdown,
     write_json,
     write_organization_markdown,
@@ -44,6 +45,35 @@ def _group_pdf_title(group: URLGroup, batch_index: int | None) -> str:
     return "Group"
 
 
+def _build_groups_from_section_map(urls: list[str], section_by_url: dict[str, str]) -> list[URLGroup]:
+    by_key: dict[str, URLGroup] = {}
+    order: list[str] = []
+    for url in urls:
+        label = section_by_url.get(url, "General")
+        key = label.lower()
+        if key not in by_key:
+            by_key[key] = URLGroup(key=key, label=label, urls=[])
+            order.append(key)
+        by_key[key].urls.append(url)
+    return [by_key[key] for key in order]
+
+
+def _write_documentation_index(output_dir: Path, groups: list[URLGroup], root_url: str, generated_files: list[Path]) -> None:
+    lines = [
+        "# Index du corpus documentaire",
+        "",
+        f"Source racine: {root_url}",
+        f"Nombre de sections: {len(groups)}",
+        "",
+        "## Sections",
+    ]
+    for group in groups:
+        lines.append(f"- {group.label} ({len(group.urls)} pages)")
+    index_path = output_dir / "index.md"
+    index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    generated_files.append(index_path)
+
+
 def run_pipeline(
     stats: URLStats,
     client: HTTPClient,
@@ -51,6 +81,7 @@ def run_pipeline(
     max_urls: int,
     *,
     include_artifacts: bool = False,
+    documentation_context: dict | None = None,
 ) -> RunResult:
     if not stats.unique_urls:
         raise ValueError("Aucune URL valide fournie.")
@@ -89,10 +120,20 @@ def run_pipeline(
         generated_files.extend([organization_plan_json, organization_plan_md])
 
     for batch_index, batch_urls in enumerate(batches, start=1):
-        groups = build_groups(batch_urls)
+        if documentation_context and documentation_context.get("section_by_url"):
+            groups = _build_groups_from_section_map(batch_urls, documentation_context["section_by_url"])
+        else:
+            groups = build_groups(batch_urls)
+
+        if documentation_context:
+            _write_documentation_index(output_dir, groups, documentation_context.get("root_url", "N/A"), generated_files)
+
         for group in groups:
             group_folder_name = dated_title(f"{group.label} Batch {batch_index:02d}", date_str)
-            group_dir = groups_root / group_folder_name if include_artifacts else output_dir
+            if documentation_context:
+                group_dir = output_dir / "sections" / group_folder_name
+            else:
+                group_dir = groups_root / group_folder_name if include_artifacts else output_dir
             pages_dir = group_dir / "pages"
             group_dir.mkdir(parents=True, exist_ok=True)
             group_dirs.append(group_dir)
@@ -109,12 +150,23 @@ def run_pipeline(
             if not pages:
                 continue
 
-            if include_artifacts:
+            if include_artifacts or documentation_context:
                 page_files = write_group_pages_markdown(pages, pages_dir, date_str)
                 generated_files.extend(page_files)
+                if documentation_context:
+                    for page_file, page in zip(page_files, pages):
+                        page_pdf = page_file.with_suffix(".pdf")
+                        write_simple_pdf(page_to_markdown(page), page_pdf)
+                        generated_files.append(page_pdf)
 
-            merged_content = build_merged_markdown(pages)
-            merged_name = dated_title(group.label, date_str)
+            merged_content = build_merged_markdown(
+                pages,
+                section_label=group.label,
+                source_root=documentation_context.get("root_url") if documentation_context else (group.urls[0] if group.urls else "N/A"),
+                aggregation_rule=f"Toutes les pages du groupe {group.label} détectées pendant l'extraction.",
+                generated_date=now.strftime("%Y-%m-%d"),
+            )
+            merged_name = dated_title(f"{group.label} Aggregated", date_str)
             merged_md_path = group_dir / f"{merged_name}.md"
             merged_md_path.write_text(merged_content, encoding="utf-8")
             generated_files.append(merged_md_path)
