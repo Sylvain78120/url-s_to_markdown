@@ -23,6 +23,15 @@ def _render_stats(title: str, stats) -> None:
     col4.metric("Invalides", len(stats.invalid_urls))
 
 
+def _advanced_defaults() -> dict[str, int | str | bool]:
+    return {
+        "include_artifacts": False,
+        "documentation_mode": "auto",
+        "doc_max_pages": 40,
+        "doc_max_depth": 2,
+    }
+
+
 def main() -> None:
     st.set_page_config(page_title="url-s_to_markdown", layout="wide")
     st.markdown(
@@ -68,10 +77,30 @@ def main() -> None:
 
     max_urls = st.number_input("max_urls", min_value=1, value=20, step=1)
     output_root = st.text_input("Dossier de sortie", value="outputs")
-    include_artifacts = st.checkbox("Mode avancé : conserver les artefacts techniques", value=False)
-    documentation_mode = st.selectbox("Mode documentation", options=["off", "auto", "force"], index=1)
-    doc_max_pages = st.number_input("doc_max_pages", min_value=5, value=40, step=5)
-    doc_max_depth = st.number_input("doc_max_depth", min_value=1, value=2, step=1)
+
+    defaults = _advanced_defaults()
+    with st.expander("Options avancées", expanded=False):
+        include_artifacts = st.checkbox(
+            "Mode avancé : conserver les artefacts techniques",
+            value=bool(defaults["include_artifacts"]),
+        )
+        documentation_mode = st.selectbox(
+            "Mode documentation",
+            options=["off", "auto", "force"],
+            index=["off", "auto", "force"].index(str(defaults["documentation_mode"])),
+        )
+        doc_max_pages = st.number_input(
+            "doc_max_pages",
+            min_value=5,
+            value=int(defaults["doc_max_pages"]),
+            step=5,
+        )
+        doc_max_depth = st.number_input(
+            "doc_max_depth",
+            min_value=1,
+            value=int(defaults["doc_max_depth"]),
+            step=1,
+        )
 
     client = UrllibHTTPClient()
     input_candidates = collect_input_candidates(

@@ -71,6 +71,11 @@ class _TextExtractor(HTMLParser):
             "was this page helpful",
             "table of contents",
             "back to top",
+            "breadcrumbs",
+            "assistant",
+            "lovable",
+            "sign in",
+            "get started",
         ]
         if any(fragment in lower for fragment in noisy_fragments):
             return
@@ -79,7 +84,15 @@ class _TextExtractor(HTMLParser):
 
     @property
     def text(self) -> str:
-        return "\n".join(self._text_chunks)
+        unique_chunks: list[str] = []
+        seen: set[str] = set()
+        for chunk in self._text_chunks:
+            key = chunk.strip().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_chunks.append(chunk)
+        return "\n".join(unique_chunks)
 
 
 def extract_page_content(url: str, html: str) -> PageContent:

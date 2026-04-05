@@ -26,6 +26,7 @@ Ensuite ouvre ton navigateur sur :
 
 - choisir un mode d'entrée : URL unique, liste collée, fichier `.txt`, **Sitemap XML URL**,
 - régler `max_urls` et le dossier de sortie,
+- utiliser **Options avancées** (repliable) pour les réglages experts,
 - lancer le traitement via un bouton,
 - voir les compteurs avant traitement,
 - voir le résumé final (réussies, échouées, lots, groupes, dossier).
@@ -56,7 +57,7 @@ url2md --file urls.txt --include-artifacts
 
 Streamlit :
 
-- cocher **"Mode avancé : conserver les artefacts techniques"**.
+- ouvrir **Options avancées** puis cocher **"Mode avancé : conserver les artefacts techniques"**.
 
 
 ## Mode "documentation site"
