@@ -14,58 +14,46 @@ def test_extract_page_content_from_local_fixture():
     assert "ignore me" not in result.text
 
 
-def test_extract_page_content_filters_common_noise():
+def test_extract_page_content_preserves_order_and_structure():
     html = """
     <html>
-      <head><title>Test bruit</title></head>
+      <head><title>Doc brute</title></head>
       <body>
-        <header>Menu principal</header>
-        <nav>Navigation</nav>
-        <div class="sidebar">Table of contents</div>
-        <main>
-          <h2>Installation</h2>
-          <p>Prerequisites: Python 3.10</p>
-          <ul>
-            <li>Créer un compte</li>
-            <li>Configurer la clé API</li>
-          </ul>
-          <p>Étape 1 : lancer la commande.</p>
-          <p>Étape 2 : vérifier les logs.</p>
-        </main>
-        <footer>Was this page helpful?</footer>
+        <h2>Installation</h2>
+        <p>Prerequisites: Python 3.10</p>
+        <ul>
+          <li>Créer un compte</li>
+          <li>Configurer la clé API</li>
+        </ul>
+        <p>Étape 1 : lancer la commande.</p>
       </body>
     </html>
     """
     result = extract_page_content(url="https://example.com", html=html)
 
-    assert "## Installation" in result.text
-    assert "Prerequisites: Python 3.10" in result.text
-    assert "- Créer un compte" in result.text
-    assert "- Configurer la clé API" in result.text
-    assert "Étape 1 : lancer la commande." in result.text
-    assert "Étape 2 : vérifier les logs." in result.text
-    assert "Menu principal" not in result.text
-    assert "Table of contents" not in result.text
-    assert "Was this page helpful" not in result.text
+    lines = result.text.splitlines()
+    assert lines[0] == "## Installation"
+    assert "Prerequisites: Python 3.10" in lines[1]
+    assert lines[2] == "- Créer un compte"
+    assert lines[3] == "- Configurer la clé API"
+    assert "Étape 1 : lancer la commande." in lines[4]
 
 
-def test_extract_page_content_removes_orphan_labels_without_truncation():
+def test_extract_page_content_keeps_non_script_text_even_if_noisy():
     html = """
     <html>
       <head><title>Doc</title></head>
       <body>
-        <main>
-          <p>Custom domains</p>
-          <p>Labs</p>
-          <p>Workspace security center</p>
-          <p>Cette fonctionnalité permet de connecter un domaine personnalisé en 3 étapes.</p>
-        </main>
+        <header>Menu principal</header>
+        <p>Custom domains</p>
+        <p>Labs</p>
+        <p>Workspace security center</p>
       </body>
     </html>
     """
     result = extract_page_content(url="https://example.com/doc", html=html)
 
-    assert "Custom domains" not in result.text
-    assert "Labs" not in result.text
-    assert "Workspace security center" not in result.text
-    assert "Cette fonctionnalité permet de connecter un domaine personnalisé en 3 étapes." in result.text
+    assert "Menu principal" in result.text
+    assert "Custom domains" in result.text
+    assert "Labs" in result.text
+    assert "Workspace security center" in result.text

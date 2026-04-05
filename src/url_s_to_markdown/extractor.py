@@ -1,4 +1,4 @@
-"""Extraction HTML simple: titre + texte principal."""
+"""Extraction HTML brute: titre + texte dans l'ordre d'apparition."""
 
 from __future__ import annotations
 
@@ -14,14 +14,12 @@ class PageContent:
 
 
 class _TextExtractor(HTMLParser):
-    BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "td", "th", "blockquote"}
+    BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "td", "th", "blockquote", "div", "section", "main", "article"}
 
     def __init__(self) -> None:
         super().__init__()
         self._in_title = False
         self._skip_depth = 0
-        self._noise_depth = 0
-        self._noise_tag_stack: list[str] = []
         self._active_blocks: list[str] = []
         self._current_line_parts: list[str] = []
         self.title = ""
@@ -33,16 +31,10 @@ class _TextExtractor(HTMLParser):
         if tag in {"script", "style", "noscript"}:
             self._skip_depth += 1
 
-        attr_text = " ".join(str(value).lower() for _, value in attrs if value)
-        noisy_attr_hints = ["nav", "menu", "sidebar", "breadcrumb", "footer", "cookie", "toc", "assist"]
-        is_noisy = tag in {"nav", "footer", "header", "aside", "form", "button"} or any(
-            hint in attr_text for hint in noisy_attr_hints
-        )
-        if is_noisy:
-            self._noise_depth += 1
-            self._noise_tag_stack.append(tag)
+        if self._skip_depth > 0:
+            return
 
-        if tag in self.BLOCK_TAGS and self._skip_depth == 0 and self._noise_depth == 0:
+        if tag in self.BLOCK_TAGS:
             self._flush_current_line()
             self._active_blocks.append(tag)
             if tag == "li":
@@ -57,10 +49,8 @@ class _TextExtractor(HTMLParser):
         if tag in {"script", "style", "noscript"} and self._skip_depth > 0:
             self._skip_depth -= 1
 
-        if self._noise_tag_stack and tag == self._noise_tag_stack[-1]:
-            self._noise_tag_stack.pop()
-            if self._noise_depth > 0:
-                self._noise_depth -= 1
+        if self._skip_depth > 0:
+            return
 
         if self._active_blocks and tag == self._active_blocks[-1]:
             self._active_blocks.pop()
@@ -70,70 +60,30 @@ class _TextExtractor(HTMLParser):
         cleaned = " ".join(data.split())
         if not cleaned:
             return
+
         if self._in_title:
             self.title = cleaned
             return
-        if self._skip_depth > 0 or self._noise_depth > 0:
+
+        if self._skip_depth > 0:
             return
 
         self._current_line_parts.append(cleaned)
 
-    def _should_drop_line(self, line: str) -> bool:
-        lower = line.lower().strip()
-        if not lower:
-            return True
-
-        noise_exact = {
-            "skip to main content",
-            "was this page helpful?",
-            "table of contents",
-            "back to top",
-            "breadcrumbs",
-            "custom domains",
-            "labs",
-            "workspace security center",
-            "assistant",
-        }
-        if lower in noise_exact:
-            return True
-
-        noisy_substrings = [
-            "cookie",
-            "accept all",
-            "privacy policy",
-            "subscribe",
-            "navigation",
-            "sign in",
-            "sign up",
-            "try for free",
-            "learn more",
-        ]
-        if any(fragment in lower for fragment in noisy_substrings):
-            return True
-
-        return False
-
     def _flush_current_line(self) -> None:
         if not self._current_line_parts:
             return
+
         line = " ".join(part.strip() for part in self._current_line_parts if part.strip()).strip()
         self._current_line_parts = []
-        if not line or self._should_drop_line(line):
-            return
-        self._text_chunks.append(line)
+
+        if line:
+            self._text_chunks.append(line)
 
     @property
     def text(self) -> str:
         self._flush_current_line()
-        unique_chunks: list[str] = []
-        seen: set[str] = set()
-        for chunk in self._text_chunks:
-            key = chunk.strip().lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            unique_chunks.append(chunk)
-        return "\n".join(unique_chunks)
+        return "\n".join(self._text_chunks)
 
 
 def extract_page_content(url: str, html: str) -> PageContent:
