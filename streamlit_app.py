@@ -24,46 +24,57 @@ def _render_stats(title: str, stats) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="url-s_to_markdown", layout="wide")
+    st.markdown(
+        """
+        <style>
+          .stButton>button {background-color:#2563eb;color:white;border-radius:8px;border:0;}
+          .stRadio [data-baseweb="radio"] div[aria-checked="true"] {background-color:#dbeafe !important;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title("url-s_to_markdown — Interface web locale")
     st.write("Lance un traitement URL -> markdown/PDF depuis le navigateur, en réutilisant le pipeline existant.")
 
-    with st.form("run_form"):
-        mode = st.radio(
-            "Mode d'entrée",
-            options=["URL unique", "Liste collée", "Fichier uploadé", "Sitemap XML URL"],
-            horizontal=True,
+    mode = st.radio(
+        "Mode d'entrée",
+        options=["URL unique", "Liste collée", "Fichier uploadé", "Sitemap XML URL"],
+        horizontal=True,
+        key="input_mode",
+    )
+
+    single_url = ""
+    pasted_urls = ""
+    uploaded_text = ""
+    sitemap_url = ""
+    sitemap_include_external = False
+
+    if mode == "URL unique":
+        single_url = st.text_input("URL", placeholder="https://example.com/docs/api")
+    elif mode == "Liste collée":
+        pasted_urls = st.text_area("Liste d'URLs (une par ligne)", height=180)
+    elif mode == "Fichier uploadé":
+        uploaded_file = st.file_uploader("Fichier texte (.txt)", type=["txt"], key="uploaded_txt")
+        if uploaded_file is not None:
+            uploaded_text = uploaded_file.getvalue().decode("utf-8", errors="replace")
+    else:
+        sitemap_url = st.text_input("URL du sitemap XML", placeholder="https://docs.example.com/sitemap.xml")
+        sitemap_include_external = st.checkbox(
+            "Inclure les URLs externes au domaine du sitemap",
+            value=False,
         )
 
-        single_url = ""
-        pasted_urls = ""
-        file_path = None
-        sitemap_url = ""
-        sitemap_include_external = False
-
-        if mode == "URL unique":
-            single_url = st.text_input("URL", placeholder="https://example.com/docs/api")
-        elif mode == "Liste collée":
-            pasted_urls = st.text_area("Liste d'URLs (une par ligne)", height=180)
-        elif mode == "Fichier uploadé":
-            uploaded_file = st.file_uploader("Fichier texte (.txt)", type=["txt"])
-            if uploaded_file is not None:
-                temp_path = Path(".streamlit_uploaded_urls.txt")
-                temp_path.write_bytes(uploaded_file.getvalue())
-                file_path = str(temp_path)
-        else:
-            sitemap_url = st.text_input("URL du sitemap XML", placeholder="https://docs.example.com/sitemap.xml")
-            sitemap_include_external = st.checkbox(
-                "Inclure les URLs externes au domaine du sitemap",
-                value=False,
-            )
-
-        max_urls = st.number_input("max_urls", min_value=1, value=20, step=1)
-        output_root = st.text_input("Dossier de sortie", value="outputs")
-
-        submitted = st.form_submit_button("Lancer le traitement")
+    max_urls = st.number_input("max_urls", min_value=1, value=20, step=1)
+    output_root = st.text_input("Dossier de sortie", value="outputs")
+    include_artifacts = st.checkbox("Mode avancé : conserver les artefacts techniques", value=False)
 
     client = UrllibHTTPClient()
-    input_candidates = collect_input_candidates(single_url=single_url, urls=parse_urls_from_text_block(pasted_urls), file_path=file_path)
+    input_candidates = collect_input_candidates(
+        single_url=single_url,
+        urls=parse_urls_from_text_block(pasted_urls) + parse_urls_from_text_block(uploaded_text),
+        file_path=None,
+    )
 
     sitemap_result = None
     if mode == "Sitemap XML URL" and sitemap_url.strip():
@@ -86,7 +97,7 @@ def main() -> None:
         if sitemap_result.errors:
             st.warning("Certaines erreurs sitemap ont été détectées. Elles n'arrêtent pas le traitement.")
 
-    if not submitted:
+    if not st.button("Lancer le traitement", type="primary"):
         st.info("Renseigne les URLs puis clique sur 'Lancer le traitement'.")
         return
 
@@ -100,6 +111,7 @@ def main() -> None:
             client=client,
             output_root=Path(output_root),
             max_urls=int(max_urls),
+            include_artifacts=include_artifacts,
         )
     except Exception as exc:  # noqa: BLE001
         st.error(f"Erreur pendant le traitement: {exc}")
@@ -112,31 +124,34 @@ def main() -> None:
     st.write(f"Lots créés: **{result.batch_count}**")
     st.write(f"Dossier de sortie: `{result.output_dir}`")
 
-    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    st.write(f"Groupes détectés: **{', '.join(manifest.get('groups_detected', [])) or 'Aucun'}**")
+    livrables = [str(path) for path in result.generated_files if path.suffix in {".md", ".pdf"}]
+    st.markdown("### Livrables (.md / .pdf)")
+    for file_path in livrables:
+        st.write(f"- `{file_path}`")
 
-    with st.expander("Manifest (JSON)", expanded=False):
-        st.json(manifest)
+    if include_artifacts:
+        if result.manifest_path and result.manifest_path.exists():
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+            st.write(f"Groupes détectés: **{', '.join(manifest.get('groups_detected', [])) or 'Aucun'}**")
+            with st.expander("Manifest (JSON)", expanded=False):
+                st.json(manifest)
 
-    with st.expander("Plan d'organisation (JSON)", expanded=False):
-        plan_json = json.loads(result.organization_plan_json.read_text(encoding="utf-8"))
-        st.json(plan_json)
+        if result.organization_plan_json and result.organization_plan_json.exists():
+            with st.expander("Plan d'organisation (JSON)", expanded=False):
+                plan_json = json.loads(result.organization_plan_json.read_text(encoding="utf-8"))
+                st.json(plan_json)
 
-    with st.expander("Plan d'organisation (Markdown)", expanded=False):
-        st.code(result.organization_plan_md.read_text(encoding="utf-8"), language="markdown")
+        if result.organization_plan_md and result.organization_plan_md.exists():
+            with st.expander("Plan d'organisation (Markdown)", expanded=False):
+                st.code(result.organization_plan_md.read_text(encoding="utf-8"), language="markdown")
 
-    errors_text = result.errors_log_path.read_text(encoding="utf-8")
-    with st.expander("Erreurs éventuelles", expanded=False):
-        if sitemap_result and sitemap_result.errors:
-            st.code("\n".join(sitemap_result.errors), language="text")
-        if errors_text.strip():
-            st.code(errors_text, language="text")
-        elif not (sitemap_result and sitemap_result.errors):
-            st.write("Aucune erreur.")
-
-    with st.expander("Fichiers générés", expanded=True):
-        for file_path in manifest.get("generated_files", []):
-            st.write(f"- `{file_path}`")
+        with st.expander("Erreurs éventuelles", expanded=False):
+            if sitemap_result and sitemap_result.errors:
+                st.code("\n".join(sitemap_result.errors), language="text")
+            if result.errors_log_path and result.errors_log_path.exists():
+                errors_text = result.errors_log_path.read_text(encoding="utf-8")
+                if errors_text.strip():
+                    st.code(errors_text, language="text")
 
 
 if __name__ == "__main__":

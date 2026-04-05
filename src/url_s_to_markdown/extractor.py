@@ -18,6 +18,7 @@ class _TextExtractor(HTMLParser):
         super().__init__()
         self._in_title = False
         self._skip_depth = 0
+        self._noise_depth = 0
         self.title = ""
         self._text_chunks: list[str] = []
 
@@ -26,12 +27,16 @@ class _TextExtractor(HTMLParser):
             self._in_title = True
         if tag in {"script", "style", "noscript"}:
             self._skip_depth += 1
+        if tag in {"nav", "footer", "header", "aside", "form", "button"}:
+            self._noise_depth += 1
 
     def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
         if tag == "title":
             self._in_title = False
         if tag in {"script", "style", "noscript"} and self._skip_depth > 0:
             self._skip_depth -= 1
+        if tag in {"nav", "footer", "header", "aside", "form", "button"} and self._noise_depth > 0:
+            self._noise_depth -= 1
 
     def handle_data(self, data: str) -> None:  # type: ignore[override]
         cleaned = " ".join(data.split())
@@ -40,8 +45,22 @@ class _TextExtractor(HTMLParser):
         if self._in_title:
             self.title = cleaned
             return
-        if self._skip_depth == 0:
-            self._text_chunks.append(cleaned)
+        if self._skip_depth > 0 or self._noise_depth > 0:
+            return
+
+        lower = cleaned.lower()
+        noisy_fragments = [
+            "cookie",
+            "accept all",
+            "privacy policy",
+            "subscribe",
+            "menu",
+            "navigation",
+        ]
+        if any(fragment in lower for fragment in noisy_fragments):
+            return
+
+        self._text_chunks.append(cleaned)
 
     @property
     def text(self) -> str:

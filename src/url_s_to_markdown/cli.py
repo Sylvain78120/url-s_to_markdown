@@ -38,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MAX_URLS,
         help=f"Nombre maximum d'URLs uniques par lot (défaut: {DEFAULT_MAX_URLS})",
     )
+    parser.add_argument(
+        "--include-artifacts",
+        action="store_true",
+        help="Conserver aussi les artefacts techniques (manifest, plan, logs, pages).",
+    )
     return parser
 
 
@@ -81,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         client=client,
         output_root=Path(args.output_root),
         max_urls=args.max_urls,
+        include_artifacts=args.include_artifacts,
     )
 
     print("\n=== Résumé final ===")
@@ -92,10 +98,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Réussies: {result.success_count}")
     print(f"Lots créés: {result.batch_count}")
     print(f"Dossier de sortie: {result.output_dir}")
-    print(f"Plan JSON: {result.organization_plan_json}")
-    print(f"Plan MD: {result.organization_plan_md}")
-    print(f"Manifest: {result.manifest_path}")
-    print(f"Log erreurs: {result.errors_log_path}")
+    if result.organization_plan_json:
+        print(f"Plan JSON: {result.organization_plan_json}")
+    if result.organization_plan_md:
+        print(f"Plan MD: {result.organization_plan_md}")
+    if result.manifest_path:
+        print(f"Manifest: {result.manifest_path}")
+    if result.errors_log_path:
+        print(f"Log erreurs: {result.errors_log_path}")
     return 0
 
 

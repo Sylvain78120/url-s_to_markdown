@@ -1,6 +1,6 @@
 # url-s_to_markdown
 
-Outil Python local pour convertir des URLs en fichiers markdown et PDF, avec organisation automatique, manifeste et logs.
+Outil Python local pour convertir des URLs en fichiers markdown et PDF, avec organisation automatique et support sitemap XML.
 
 ## Installation
 
@@ -28,8 +28,7 @@ Ensuite ouvre ton navigateur sur :
 - régler `max_urls` et le dossier de sortie,
 - lancer le traitement via un bouton,
 - voir les compteurs avant traitement,
-- voir le résumé final (réussies, échouées, lots, groupes, dossier),
-- consulter manifeste, plan d'organisation, erreurs et fichiers générés.
+- voir le résumé final (réussies, échouées, lots, groupes, dossier).
 
 ### Mode Sitemap XML (web)
 
@@ -38,9 +37,30 @@ Ensuite ouvre ton navigateur sur :
 - Option : inclure ou non les URLs externes au domaine du sitemap
 - Par défaut, l'app **garde seulement le même domaine** (comportement prudent).
 
+## Sortie par défaut (simple)
+
+Par défaut, l'outil produit et affiche uniquement les livrables utiles :
+
+- fichiers `.md`
+- fichiers `.pdf`
+
+Les artefacts techniques (manifest, plan, logs, pages intermédiaires) sont désactivés par défaut.
+
+### Activer les artefacts techniques (mode avancé)
+
+CLI :
+
+```bash
+url2md --file urls.txt --include-artifacts
+```
+
+Streamlit :
+
+- cocher **"Mode avancé : conserver les artefacts techniques"**.
+
 ## Continuer à utiliser la CLI
 
-La CLI est toujours disponible :
+Exemple simple :
 
 ```bash
 url2md --file urls.txt --max-urls 10
@@ -73,24 +93,6 @@ url2md --urls https://example.com/docs/api/a https://example.com/blog/post
 url2md --file urls.txt --max-urls 10 --output-root ./mes_sorties
 ```
 
-## Structure de sortie
-
-```text
-outputs/
-  <YYYYMMDD_Run_HHMMSS>/
-    organization_plan.json
-    organization_plan.md
-    manifest.json
-    logs/
-      errors.log
-    groups/
-      <YYYYMMDD_Title>/
-        <YYYYMMDD_Title>.md
-        <YYYYMMDD_Title>.pdf
-        pages/
-          <YYYYMMDD_Title>.md
-```
-
 ## Tests
 
 ```bash
@@ -101,6 +103,5 @@ python -m pytest -q
 
 - Sitemaps supportés : `urlset` et `sitemapindex` (avec profondeur max simple).
 - Sur `sitemapindex`, si un sous-sitemap échoue, le traitement continue avec les autres.
-- Regroupement logique par arborescence URL : `docs/<segment>`, `blog`, sinon domaine + 1er segment.
-- Convention de nommage des fichiers principaux : `YYYYMMDD_Title`.
+- L'extraction filtre certains éléments bruyants courants (nav/header/footer/cookies), avec heuristique simple.
 - PDF générés volontairement minimalistes (texte simple) pour rester déterministe.
