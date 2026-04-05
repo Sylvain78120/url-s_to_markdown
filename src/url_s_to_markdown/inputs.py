@@ -20,7 +20,7 @@ def is_valid_url(value: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-def _collect_candidates(
+def collect_input_candidates(
     single_url: str | None = None,
     urls: list[str] | None = None,
     file_path: str | None = None,
@@ -69,7 +69,7 @@ def parse_url_stats(
     urls: list[str] | None = None,
     file_path: str | None = None,
 ) -> URLStats:
-    candidates = _collect_candidates(single_url=single_url, urls=urls, file_path=file_path)
+    candidates = collect_input_candidates(single_url=single_url, urls=urls, file_path=file_path)
     return parse_url_stats_from_candidates(candidates)
 
 

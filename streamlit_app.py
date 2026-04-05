@@ -8,24 +8,9 @@ from pathlib import Path
 import streamlit as st
 
 from url_s_to_markdown.http_client import UrllibHTTPClient
-from url_s_to_markdown.inputs import parse_url_stats_from_candidates, parse_urls_from_text_block
+from url_s_to_markdown.inputs import collect_input_candidates, parse_url_stats_from_candidates, parse_urls_from_text_block
 from url_s_to_markdown.pipeline import run_pipeline
-
-
-def _get_candidates(mode: str, single_url: str, pasted_urls: str, uploaded_file) -> list[str]:
-    if mode == "URL unique":
-        return [single_url.strip()] if single_url.strip() else []
-
-    if mode == "Liste collée":
-        return parse_urls_from_text_block(pasted_urls)
-
-    if mode == "Fichier uploadé":
-        if uploaded_file is None:
-            return []
-        content = uploaded_file.getvalue().decode("utf-8", errors="replace")
-        return parse_urls_from_text_block(content)
-
-    return []
+from url_s_to_markdown.sitemap import extract_urls_from_sitemap
 
 
 def _render_stats(title: str, stats) -> None:
@@ -45,29 +30,61 @@ def main() -> None:
     with st.form("run_form"):
         mode = st.radio(
             "Mode d'entrée",
-            options=["URL unique", "Liste collée", "Fichier uploadé"],
+            options=["URL unique", "Liste collée", "Fichier uploadé", "Sitemap XML URL"],
             horizontal=True,
         )
 
         single_url = ""
         pasted_urls = ""
-        uploaded_file = None
+        file_path = None
+        sitemap_url = ""
+        sitemap_include_external = False
 
         if mode == "URL unique":
             single_url = st.text_input("URL", placeholder="https://example.com/docs/api")
         elif mode == "Liste collée":
             pasted_urls = st.text_area("Liste d'URLs (une par ligne)", height=180)
-        else:
+        elif mode == "Fichier uploadé":
             uploaded_file = st.file_uploader("Fichier texte (.txt)", type=["txt"])
+            if uploaded_file is not None:
+                temp_path = Path(".streamlit_uploaded_urls.txt")
+                temp_path.write_bytes(uploaded_file.getvalue())
+                file_path = str(temp_path)
+        else:
+            sitemap_url = st.text_input("URL du sitemap XML", placeholder="https://docs.example.com/sitemap.xml")
+            sitemap_include_external = st.checkbox(
+                "Inclure les URLs externes au domaine du sitemap",
+                value=False,
+            )
 
         max_urls = st.number_input("max_urls", min_value=1, value=20, step=1)
         output_root = st.text_input("Dossier de sortie", value="outputs")
 
         submitted = st.form_submit_button("Lancer le traitement")
 
-    candidates = _get_candidates(mode, single_url, pasted_urls, uploaded_file)
-    stats = parse_url_stats_from_candidates(candidates)
+    client = UrllibHTTPClient()
+    input_candidates = collect_input_candidates(single_url=single_url, urls=parse_urls_from_text_block(pasted_urls), file_path=file_path)
+
+    sitemap_result = None
+    if mode == "Sitemap XML URL" and sitemap_url.strip():
+        sitemap_result = extract_urls_from_sitemap(
+            sitemap_url.strip(),
+            client,
+            same_domain_only=not sitemap_include_external,
+        )
+        input_candidates.extend(sitemap_result.urls)
+
+    stats = parse_url_stats_from_candidates(input_candidates)
     _render_stats("Compteurs avant traitement", stats)
+
+    if sitemap_result is not None:
+        st.markdown("### Détails sitemap")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Sitemaps détectés", sitemap_result.sitemaps_detected)
+        c2.metric("URLs extraites", len(sitemap_result.urls))
+        c3.metric("URLs invalides sitemap", len(sitemap_result.invalid_urls))
+        if sitemap_result.errors:
+            st.warning("Certaines erreurs sitemap ont été détectées. Elles n'arrêtent pas le traitement.")
 
     if not submitted:
         st.info("Renseigne les URLs puis clique sur 'Lancer le traitement'.")
@@ -80,7 +97,7 @@ def main() -> None:
     try:
         result = run_pipeline(
             stats=stats,
-            client=UrllibHTTPClient(),
+            client=client,
             output_root=Path(output_root),
             max_urls=int(max_urls),
         )
@@ -110,9 +127,11 @@ def main() -> None:
 
     errors_text = result.errors_log_path.read_text(encoding="utf-8")
     with st.expander("Erreurs éventuelles", expanded=False):
+        if sitemap_result and sitemap_result.errors:
+            st.code("\n".join(sitemap_result.errors), language="text")
         if errors_text.strip():
             st.code(errors_text, language="text")
-        else:
+        elif not (sitemap_result and sitemap_result.errors):
             st.write("Aucune erreur.")
 
     with st.expander("Fichiers générés", expanded=True):

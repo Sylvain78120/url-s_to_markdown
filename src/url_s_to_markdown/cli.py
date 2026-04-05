@@ -6,8 +6,9 @@ import argparse
 from pathlib import Path
 
 from .http_client import UrllibHTTPClient
-from .inputs import parse_url_stats
+from .inputs import collect_input_candidates, parse_url_stats_from_candidates
 from .pipeline import run_pipeline
+from .sitemap import extract_urls_from_sitemap
 
 DEFAULT_MAX_URLS = 20
 
@@ -20,6 +21,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--url", help="URL unique")
     parser.add_argument("--urls", nargs="+", help="Liste d'URLs")
     parser.add_argument("--file", dest="file_path", help="Fichier texte contenant une URL par ligne")
+    parser.add_argument("--sitemap-url", help="URL d'un sitemap XML distant")
+    parser.add_argument(
+        "--sitemap-include-external",
+        action="store_true",
+        help="Inclure aussi les URLs hors domaine du sitemap (défaut: non)",
+    )
     parser.add_argument(
         "--output-root",
         default="outputs",
@@ -36,21 +43,42 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    client = UrllibHTTPClient()
 
-    stats = parse_url_stats(single_url=args.url, urls=args.urls, file_path=args.file_path)
+    input_candidates = collect_input_candidates(single_url=args.url, urls=args.urls, file_path=args.file_path)
+
+    sitemap_result = None
+    if args.sitemap_url:
+        sitemap_result = extract_urls_from_sitemap(
+            args.sitemap_url,
+            client,
+            same_domain_only=not args.sitemap_include_external,
+        )
+        input_candidates.extend(sitemap_result.urls)
+
+    stats = parse_url_stats_from_candidates(input_candidates)
+
     print("=== Compteur URLs (avant traitement) ===")
     print(f"Total détectées: {stats.total_detected}")
     print(f"Valides: {len(stats.valid_urls)}")
     print(f"Uniques: {len(stats.unique_urls)}")
     print(f"Invalides: {len(stats.invalid_urls)}")
 
+    if sitemap_result is not None:
+        print("--- Détails sitemap ---")
+        print(f"Sitemaps détectés: {sitemap_result.sitemaps_detected}")
+        print(f"URLs extraites: {len(sitemap_result.urls)}")
+        print(f"URLs invalides dans sitemap: {len(sitemap_result.invalid_urls)}")
+        if sitemap_result.errors:
+            print(f"Erreurs sitemap: {len(sitemap_result.errors)}")
+
     if not stats.unique_urls:
-        print("Erreur: aucune URL valide fournie (utilise --url, --urls ou --file).")
+        print("Erreur: aucune URL valide fournie (utilise --url, --urls, --file ou --sitemap-url).")
         return 1
 
     result = run_pipeline(
         stats=stats,
-        client=UrllibHTTPClient(),
+        client=client,
         output_root=Path(args.output_root),
         max_urls=args.max_urls,
     )
