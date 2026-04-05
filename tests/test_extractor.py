@@ -23,9 +23,14 @@ def test_extract_page_content_filters_common_noise():
         <nav>Navigation</nav>
         <div class="sidebar">Table of contents</div>
         <main>
-          <p>Contenu utile A</p>
-          <p>Contenu utile B</p>
+          <h2>Installation</h2>
           <p>Prerequisites: Python 3.10</p>
+          <ul>
+            <li>Créer un compte</li>
+            <li>Configurer la clé API</li>
+          </ul>
+          <p>Étape 1 : lancer la commande.</p>
+          <p>Étape 2 : vérifier les logs.</p>
         </main>
         <footer>Was this page helpful?</footer>
       </body>
@@ -33,9 +38,34 @@ def test_extract_page_content_filters_common_noise():
     """
     result = extract_page_content(url="https://example.com", html=html)
 
-    assert "Contenu utile A" in result.text
-    assert "Contenu utile B" in result.text
+    assert "## Installation" in result.text
+    assert "Prerequisites: Python 3.10" in result.text
+    assert "- Créer un compte" in result.text
+    assert "- Configurer la clé API" in result.text
+    assert "Étape 1 : lancer la commande." in result.text
+    assert "Étape 2 : vérifier les logs." in result.text
     assert "Menu principal" not in result.text
     assert "Table of contents" not in result.text
     assert "Was this page helpful" not in result.text
-    assert "Prerequisites: Python 3.10" in result.text
+
+
+def test_extract_page_content_removes_orphan_labels_without_truncation():
+    html = """
+    <html>
+      <head><title>Doc</title></head>
+      <body>
+        <main>
+          <p>Custom domains</p>
+          <p>Labs</p>
+          <p>Workspace security center</p>
+          <p>Cette fonctionnalité permet de connecter un domaine personnalisé en 3 étapes.</p>
+        </main>
+      </body>
+    </html>
+    """
+    result = extract_page_content(url="https://example.com/doc", html=html)
+
+    assert "Custom domains" not in result.text
+    assert "Labs" not in result.text
+    assert "Workspace security center" not in result.text
+    assert "Cette fonctionnalité permet de connecter un domaine personnalisé en 3 étapes." in result.text

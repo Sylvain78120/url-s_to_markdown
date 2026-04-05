@@ -14,12 +14,16 @@ class PageContent:
 
 
 class _TextExtractor(HTMLParser):
+    BLOCK_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "td", "th", "blockquote"}
+
     def __init__(self) -> None:
         super().__init__()
         self._in_title = False
         self._skip_depth = 0
         self._noise_depth = 0
         self._noise_tag_stack: list[str] = []
+        self._active_blocks: list[str] = []
+        self._current_line_parts: list[str] = []
         self.title = ""
         self._text_chunks: list[str] = []
 
@@ -38,6 +42,15 @@ class _TextExtractor(HTMLParser):
             self._noise_depth += 1
             self._noise_tag_stack.append(tag)
 
+        if tag in self.BLOCK_TAGS and self._skip_depth == 0 and self._noise_depth == 0:
+            self._flush_current_line()
+            self._active_blocks.append(tag)
+            if tag == "li":
+                self._current_line_parts.append("- ")
+            elif tag.startswith("h") and len(tag) == 2 and tag[1].isdigit():
+                level = min(max(int(tag[1]), 1), 6)
+                self._current_line_parts.append("#" * level + " ")
+
     def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
         if tag == "title":
             self._in_title = False
@@ -49,6 +62,10 @@ class _TextExtractor(HTMLParser):
             if self._noise_depth > 0:
                 self._noise_depth -= 1
 
+        if self._active_blocks and tag == self._active_blocks[-1]:
+            self._active_blocks.pop()
+            self._flush_current_line()
+
     def handle_data(self, data: str) -> None:  # type: ignore[override]
         cleaned = " ".join(data.split())
         if not cleaned:
@@ -59,31 +76,55 @@ class _TextExtractor(HTMLParser):
         if self._skip_depth > 0 or self._noise_depth > 0:
             return
 
-        lower = cleaned.lower()
-        noisy_fragments = [
+        self._current_line_parts.append(cleaned)
+
+    def _should_drop_line(self, line: str) -> bool:
+        lower = line.lower().strip()
+        if not lower:
+            return True
+
+        noise_exact = {
+            "skip to main content",
+            "was this page helpful?",
+            "table of contents",
+            "back to top",
+            "breadcrumbs",
+            "custom domains",
+            "labs",
+            "workspace security center",
+            "assistant",
+        }
+        if lower in noise_exact:
+            return True
+
+        noisy_substrings = [
             "cookie",
             "accept all",
             "privacy policy",
             "subscribe",
-            "menu",
             "navigation",
-            "skip to main content",
-            "was this page helpful",
-            "table of contents",
-            "back to top",
-            "breadcrumbs",
-            "assistant",
-            "lovable",
             "sign in",
-            "get started",
+            "sign up",
+            "try for free",
+            "learn more",
         ]
-        if any(fragment in lower for fragment in noisy_fragments):
-            return
+        if any(fragment in lower for fragment in noisy_substrings):
+            return True
 
-        self._text_chunks.append(cleaned)
+        return False
+
+    def _flush_current_line(self) -> None:
+        if not self._current_line_parts:
+            return
+        line = " ".join(part.strip() for part in self._current_line_parts if part.strip()).strip()
+        self._current_line_parts = []
+        if not line or self._should_drop_line(line):
+            return
+        self._text_chunks.append(line)
 
     @property
     def text(self) -> str:
+        self._flush_current_line()
         unique_chunks: list[str] = []
         seen: set[str] = set()
         for chunk in self._text_chunks:
