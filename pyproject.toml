@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "url-s-to-markdown"
+version = "0.4.0"
+description = "MVP+ local: URLs et sitemap XML vers markdown/PDF"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Contributeurs" }]
+dependencies = ["streamlit>=1.30"]
+
+[project.scripts]
+url2md = "url_s_to_markdown.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
